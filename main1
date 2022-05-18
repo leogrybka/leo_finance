@@ -1,0 +1,179 @@
+import datetime
+import calendar
+import numpy as np
+import pandas as pd
+import statsmodels.formula.api as sm
+
+def doc():
+    print('data_reader: Data extractor from Yahoo Finance, use it with datetime library')
+    print('vpl: Returns the Net Present Value given a vector of flows and the discount Rate')
+    print('CAPM: Returns the anual discount Rate using the CAPM model. It is possible to choose the kind of rate: n for the normal one, o for the optimistic rate, p for he pessimist rate or r for the complete report ')
+    print('Tracker: It tracks some symbol for a specific time')
+
+def original():
+    print('********************')
+    print('   ')
+    print('Thanks for using the Original Leo Finance library')
+    print('For more information send an email to leogr@al.insper.edu.br')
+    print('AMesa.py')
+    print('   ')
+    print('********************')
+
+def data_reader(ticker,begin,end,freq='1d'):
+    
+    #Possibilities of frequencies 1d ; 1wk ; 1mo
+    
+    #Inputs
+    
+    beg = begin
+    
+    end = end
+    
+    ticker = ticker
+    
+    freq = freq
+    
+    ###
+    
+    beg = str(calendar.timegm(beg.timetuple()))
+    end = str(calendar.timegm(end.timetuple()))
+    
+    url = str('https://query1.finance.yahoo.com/v7/finance/download/' + ticker + '?period1=' + beg + '&period2=' + end + '&interval=' + freq + '&events=history&includeAdjustedClose=true')      
+    
+    df = pd.read_csv(url)
+    return df
+
+def vpl(vetor,taxa):
+    fluxos=np.zeros(len(vetor))
+    for i in range(len(vetor)):
+        fluxos[i]=vetor[i]/(1+taxa)**(i+1)
+    return round(sum(fluxos),2)
+
+def CAPM(rf_aa,ticker,kind='n'):
+    
+    rf = (1+rf_aa)**(1/12)-1
+    
+    date = datetime.date.today()
+    date = date + datetime.timedelta(days=-365*5)
+    
+    asset = data_reader(ticker,date,datetime.date.today(),'1mo')['Adj Close'].pct_change()[1:]
+    market = data_reader('^BVSP',date,datetime.date.today(),'1mo')['Adj Close'].pct_change()[1:]
+    
+    asset = asset - rf
+    market = market - rf
+    
+    data = pd.DataFrame({'asset':asset,'market':market})
+    
+    model = sm.ols('asset~market',data).fit()
+    
+    beta = model.params[1]
+    beta_min = model.params[1] - 2*model.bse[1]
+    beta_max = model.params[1] + 2*model.bse[1]
+    
+    R = rf + beta*np.mean(market)
+    R_min = rf + beta_min*np.mean(market)
+    R_max = rf + beta_max*np.mean(market)
+    
+    if kind=='n':
+        return round((1+R)**12-1,4)
+    elif kind=='o':
+        return round((1+R_min)**12-1,4)
+    elif kind=='p':
+        return round((1+R_max)**12-1,4)
+    elif kind=='r':
+        print('=======================================================================')
+        print(' ')
+        print('Optimistic Scenario')
+        print(ticker)
+        print('Beta = ',round(beta_min,4))
+        print('Monthly Discount Rate = ',round(R_min*100,2),' %')
+        print('Anual Discount Rate = ',round(((1+R_min)**12-1)*100,2),' %')
+        print('Average Market Risk Premium =',round(((1+np.mean(market))**12-1)*100,2),' % yr')
+        print(' ')
+        print('=======================================================================')
+        print('=======================================================================')
+        print(' ')
+        print('Basic Scenario')
+        print(ticker)
+        print('Beta = ',round(beta,4))
+        print('Monthly Discount Rate = ',round(R*100,2),' %')
+        print('Anual Discount Rate = ',round(((1+R)**12-1)*100,2),' %')
+        print('Average Market Risk Premium =',round(((1+np.mean(market))**12-1)*100,2),' % yr')
+        print(' ')
+        print('=======================================================================')
+        print('=======================================================================')
+        print(' ')
+        print('Pessimistic Scenario')
+        print(ticker)
+        print('Beta = ',round(beta_max,4))
+        print('Monthly Discount Rate = ',round(R_max*100,2),' %')
+        print('Anual Discount Rate = ',round(((1+R_max)**12-1)*100,2),' %')
+        print('Average Market Risk Premium =',round(((1+np.mean(market))**12-1)*100,2),' % yr')
+        print(' ')
+        print('=======================================================================')
+    elif kind=='pv':
+        return print('P-Value: ',round(model.pvalues[1],4))
+    
+def Tracker(symbol,sensibility=0.0025):
+    import time as t
+    import datetime as dt
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    date_i = dt.datetime.now() + dt.timedelta(days=-3)
+    date_f = dt.datetime.now()
+    atual = 15
+    n= atual*5
+    
+    minutes=float(input('Insert Tracking Minutes = '))
+    minutes=int(minutes/(atual/60))
+    
+    print('**********')
+    print(symbol)
+    print('**********')
+    
+    quote=np.zeros(minutes)
+    ret = np.zeros(len(quote)-1)
+    vol_control=np.zeros(minutes)
+    x=data_reader(symbol,date_i,date_f)
+    quote[0]=x['Close'].tail(1)
+    
+    for i in range(1,minutes):
+        date_i = dt.datetime.now() + dt.timedelta(days=-3)
+        date_f = dt.datetime.now()
+        x=data_reader(symbol,date_i,date_f)
+        quote[i]=x['Close'].tail(1)
+        ret[i-1] = (quote[i]-quote[i-1])/quote[i-1]*100
+        print(dt.datetime.now(),' Value = ',round(quote[i],4))
+        if i>=n:
+            if abs((quote[i]-quote[i-n])/quote[i-n]) >= sensibility:
+                print('***** VOLATILITY ALERT ***** / chg. = ',100*round((quote[i]-quote[i-n])/quote[i-n],4),' %')
+                vol_control[i]=1
+            n=n+1
+        t.sleep(15)
+    print('*****')
+    t.sleep(1)
+    print('****')
+    t.sleep(1)
+    print('***')
+    t.sleep(1)
+    print('**')
+    t.sleep(1)
+    print('*')
+    t.sleep(1)
+    print(' ')
+    print('MARKET CLOSED')
+    print(' ')
+    print('Volatility Alerts (times) = ',sum(vol_control))
+    
+    plt.figure(0)
+    plt.plot(quote[1:])
+    plt.title('Quote '+symbol+' - Last '+str(minutes*(atual/60))+' Minutes')
+    plt.grid()
+    plt.figure(1)
+    plt.boxplot(quote,showmeans=True)
+    plt.title(symbol)
+    plt.figure(2)
+    plt.title('Returns (%) - '+symbol)
+    plt.grid()
+    plt.plot(ret)
